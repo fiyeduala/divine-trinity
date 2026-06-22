@@ -12,6 +12,7 @@ import { ConsultationPage }  from './pages/ConsultationPage'
 import { PatientFolderPage } from './pages/PatientFolderPage'
 import { NewPatientPage }    from './pages/receptionist/NewPatientPage'
 import { LabTechDashboard }  from './pages/dashboards/LabTechDashboard'
+import { FinancePage }       from './pages/FinancePage'
 
 export default function App() {
   return (
@@ -37,7 +38,7 @@ export default function App() {
                 <Route path="/consultations/:id"  element={<ConsultationPage />} />
                 <Route path="/lab"                element={<LabTechDashboard />} />
                 <Route path="/results"            element={<LabTechDashboard />} />
-                <Route path="/finance"            element={<PatientFolderPage />} />
+                <Route path="/finance"            element={<FinancePage />} />
                 <Route path="/reports"            element={<DashboardRouter />} />
                 <Route path="/settings"           element={<DashboardRouter />} />
                 <Route path="/qr"                 element={<DashboardRouter />} />
