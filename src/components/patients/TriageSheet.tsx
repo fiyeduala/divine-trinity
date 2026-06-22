@@ -68,13 +68,12 @@ export function TriageSheet({ patient, open, onClose, onComplete }: Props) {
       // Insert vitals record
       await insertVitals({
         patient_id:   patient.id,
-        bp_systolic:  form.bp_systolic  ? parseInt(form.bp_systolic)     : null,
-        bp_diastolic: form.bp_diastolic ? parseInt(form.bp_diastolic)    : null,
-        pulse:        form.pulse        ? parseInt(form.pulse)           : null,
-        weight:       form.weight       ? parseFloat(form.weight)        : null,
-        temperature:  form.temperature  ? parseFloat(form.temperature)   : null,
+        bp_systolic:  form.bp_systolic  ? parseInt(form.bp_systolic)   : null,
+        bp_diastolic: form.bp_diastolic ? parseInt(form.bp_diastolic)  : null,
+        pulse:        form.pulse        ? parseInt(form.pulse)         : null,
+        weight:       form.weight       ? parseFloat(form.weight)      : null,
+        temperature:  form.temperature  ? parseFloat(form.temperature) : null,
         perspiration: form.perspiration || null,
-        notes:        form.notes.trim() || null,
         taken_by:     profile.id,
       })
 

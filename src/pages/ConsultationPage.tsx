@@ -1,212 +1,554 @@
-import { useState } from 'react'
-import { ArrowLeft, CheckCircle2, FlaskConical, Pill, FileText } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
-import { PageHeader } from '@/components/shared/PageHeader'
-import { StatusBadge } from '@/components/shared/StatusBadge'
-import { SectionCard, FormSection } from '@/components/shared/SectionCard'
-import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import {
+  ArrowLeft, Save, FlaskConical, Pill, CheckCircle2,
+  Loader2, Trash2, Plus, AlertCircle, SendToBack,
+} from 'lucide-react'
+import { Button }    from '@/components/ui/button'
+import { Textarea }  from '@/components/ui/textarea'
+import { Label }     from '@/components/ui/label'
+import { Input }     from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { Separator } from '@/components/ui/separator'
+import { SectionCard } from '@/components/shared/SectionCard'
+import { StatusBadge } from '@/components/shared/StatusBadge'
+import { Separator }   from '@/components/ui/separator'
+import { fetchPatient, updatePatientStatus }  from '@/lib/patientQueries'
+import { fetchVitalsForPatient } from '@/lib/vitalsQueries'
+import {
+  fetchOrCreateConsultation, updateConsultation,
+  fetchPrescriptions,  addPrescription,  deletePrescription,
+  fetchLabOrders,      addLabOrder,      deleteLabOrder,
+  fetchDrugs,          fetchLabTests,
+} from '@/lib/consultationQueries'
+import { useAuth } from '@/contexts/AuthContext'
+import { toast }   from 'sonner'
+import type { Patient, Vitals, Consultation, Prescription, LabOrder, Drug, LabTest } from '@/lib/database.types'
 
-const VITALS = [
-  { label: 'Blood Pressure',  value: '118 / 76 mmHg' },
-  { label: 'Pulse Rate',      value: '72 bpm' },
-  { label: 'Temperature',     value: '36.8 °C' },
-  { label: 'Weight',          value: '62 kg' },
-  { label: 'Height',          value: '165 cm' },
-  { label: 'BMI',             value: '22.8' },
-  { label: 'LMP',             value: 'Jun 01, 2026' },
-  { label: 'Cycle Length',    value: '28 days' },
-]
+// ── Small UI helpers ──────────────────────────────────────────────────────────
 
-const LAB_RESULTS = [
-  { test: 'FSH',         value: '7.2 mIU/mL',  flag: 'normal' },
-  { test: 'LH',         value: '4.8 mIU/mL',  flag: 'normal' },
-  { test: 'Estradiol',  value: '95 pg/mL',    flag: 'normal' },
-  { test: 'AMH',        value: '0.8 ng/mL',   flag: 'low' },
-  { test: 'Progesterone', value: '0.4 ng/mL', flag: 'normal' },
-]
+function VitalChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 text-center">
+      <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">{label}</div>
+      <div className="text-sm font-semibold text-slate-800 mt-0.5">{value}</div>
+    </div>
+  )
+}
 
-const AVAILABLE_TESTS = ['Hormone Panel', 'Semen Analysis', 'Ultrasound (TVS)', 'HSG', 'Blood Count', 'Prolactin', 'TSH', 'Fasting Blood Sugar']
-const AVAILABLE_DRUGS = ['Clomiphene 50mg', 'Progesterone 200mg', 'Folic Acid 5mg', 'Metformin 500mg', 'Inositol 2g', 'Vitamin D 1000IU']
+function SoapField({ label, value, onChange, placeholder }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{label}</Label>
+      <Textarea
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={4}
+        className="resize-none text-sm"
+      />
+    </div>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 export function ConsultationPage() {
-  const navigate = useNavigate()
-  const [soap, setSoap] = useState({ S: '', O: '', A: '', P: '' })
-  const [selectedTests, setSelectedTests] = useState<string[]>([])
-  const [selectedDrugs, setSelectedDrugs] = useState<string[]>([])
+  const { id: patientId }  = useParams<{ id: string }>()
+  const navigate   = useNavigate()
+  const { profile } = useAuth()
 
-  function toggleTest(t: string) {
-    setSelectedTests(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])
+  // Data states
+  const [patient,       setPatient]       = useState<Patient | null>(null)
+  const [vitals,        setVitals]        = useState<Vitals | null>(null)
+  const [consultation,  setConsultation]  = useState<Consultation | null>(null)
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
+  const [labOrders,     setLabOrders]     = useState<LabOrder[]>([])
+  const [drugs,         setDrugs]         = useState<Drug[]>([])
+  const [labTests,      setLabTests]      = useState<LabTest[]>([])
+
+  // SOAP form
+  const [soap, setSoap] = useState({
+    subjective: '', objective: '', assessment: '', plan: '',
+  })
+
+  // Add-drug form
+  const [selectedDrug, setSelectedDrug]   = useState('')
+  const [drugQty,      setDrugQty]        = useState('1')
+
+  // Add-test form
+  const [selectedTest, setSelectedTest]   = useState('')
+
+  // UI
+  const [loading,   setLoading]   = useState(true)
+  const [savingSOAP, setSavingSOAP] = useState(false)
+  const [addingDrug, setAddingDrug] = useState(false)
+  const [addingTest, setAddingTest] = useState(false)
+  const [finalizing, setFinalizing] = useState(false)
+  const [error,     setError]     = useState<string | null>(null)
+
+  // ── Load ──────────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!patientId || !profile) return
+    const room = profile.consultation_room ?? 1
+
+    async function load() {
+      setLoading(true)
+      setError(null)
+      try {
+        const [pt, vitalsArr, consult, rxList, orderList, drugList, testList] = await Promise.all([
+          fetchPatient(patientId!),
+          fetchVitalsForPatient(patientId!),
+          fetchOrCreateConsultation(patientId!, profile!.id, room),
+          fetchPrescriptions(patientId!),
+          fetchLabOrders(patientId!),
+          fetchDrugs(),
+          fetchLabTests(),
+        ])
+        setPatient(pt)
+        setVitals(vitalsArr[0] ?? null)
+        setConsultation(consult)
+        setSoap({
+          subjective: consult.soap_subjective ?? '',
+          objective:  consult.soap_objective  ?? '',
+          assessment: consult.soap_assessment ?? '',
+          plan:       consult.soap_plan       ?? '',
+        })
+        setPrescriptions(rxList)
+        setLabOrders(orderList)
+        setDrugs(drugList)
+        setLabTests(testList)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load consultation')
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [patientId, profile])
+
+  // ── Actions ───────────────────────────────────────────────────────────────
+
+  async function saveSOAP() {
+    if (!consultation) return
+    setSavingSOAP(true)
+    try {
+      const updated = await updateConsultation(consultation.id, {
+        soap_subjective: soap.subjective || null,
+        soap_objective:  soap.objective  || null,
+        soap_assessment: soap.assessment || null,
+        soap_plan:       soap.plan       || null,
+      })
+      setConsultation(updated)
+      toast.success('SOAP note saved')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save SOAP')
+    } finally {
+      setSavingSOAP(false)
+    }
   }
-  function toggleDrug(d: string) {
-    setSelectedDrugs(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])
+
+  async function handleAddDrug() {
+    if (!selectedDrug || !consultation || !profile) return
+    const drug = drugs.find(d => d.id === selectedDrug)
+    if (!drug) return
+    setAddingDrug(true)
+    try {
+      const rx = await addPrescription({
+        patient_id:         patientId!,
+        consultation_id:    consultation.id,
+        drug_id:            selectedDrug,
+        quantity:           parseInt(drugQty) || 1,
+        unit_price_at_time: drug.unit_price,
+        prescribed_by:      profile.id,
+      })
+      setPrescriptions(prev => [...prev, rx])
+      setSelectedDrug('')
+      setDrugQty('1')
+      toast.success(`${drug.name} prescribed`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to add prescription')
+    } finally {
+      setAddingDrug(false)
+    }
   }
+
+  async function handleRemoveDrug(id: string) {
+    try {
+      await deletePrescription(id)
+      setPrescriptions(prev => prev.filter(rx => rx.id !== id))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to remove')
+    }
+  }
+
+  async function handleAddTest() {
+    if (!selectedTest || !consultation || !profile) return
+    setAddingTest(true)
+    try {
+      const order = await addLabOrder({
+        patient_id:      patientId!,
+        consultation_id: consultation.id,
+        lab_test_id:     selectedTest,
+        ordered_by:      profile.id,
+      })
+      setLabOrders(prev => [...prev, order])
+      setSelectedTest('')
+      const test = labTests.find(t => t.id === selectedTest)
+      toast.success(`${test?.name ?? 'Test'} ordered`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to add lab order')
+    } finally {
+      setAddingTest(false)
+    }
+  }
+
+  async function handleRemoveTest(id: string) {
+    try {
+      await deleteLabOrder(id)
+      setLabOrders(prev => prev.filter(o => o.id !== id))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to remove')
+    }
+  }
+
+  async function sendToLab() {
+    if (!patientId) return
+    setFinalizing(true)
+    try {
+      await saveSOAP()
+      const updated = await updatePatientStatus(patientId, 'awaiting_lab')
+      setPatient(updated)
+      toast.success('Patient sent to lab')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed')
+    } finally {
+      setFinalizing(false)
+    }
+  }
+
+  async function finalizeConsultation() {
+    if (!patientId) return
+    setFinalizing(true)
+    try {
+      await saveSOAP()
+      const updated = await updatePatientStatus(patientId, 'completed')
+      setPatient(updated)
+      toast.success('Consultation finalized')
+      navigate(-1)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed')
+    } finally {
+      setFinalizing(false)
+    }
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64 text-slate-400">
+        <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading consultation…
+      </div>
+    )
+  }
+
+  if (error || !patient) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="w-fit gap-2">
+          <ArrowLeft className="h-4 w-4" /> Back
+        </Button>
+        <div className="flex items-center gap-2 rounded-xl bg-red-50 border border-red-100 p-4 text-sm text-red-700">
+          <AlertCircle className="h-4 w-4 shrink-0" /> {error ?? 'Patient not found'}
+        </div>
+      </div>
+    )
+  }
+
+  const patientName = `${patient.wife_surname ?? ''} ${patient.wife_other_names ?? ''}`.trim() || '—'
+  const pendingOrders = labOrders.filter(o => o.status !== 'completed')
+  const canSendToLab  = pendingOrders.length > 0 && !['awaiting_lab', 'lab_in_progress', 'completed'].includes(patient.status)
+  const canFinalize   = !['awaiting_lab', 'lab_in_progress', 'completed'].includes(patient.status)
+  const isReadOnly    = ['awaiting_lab', 'lab_in_progress', 'completed'].includes(patient.status)
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Consultation"
-        subtitle="Amaka Okonkwo · DT-2024-001"
-        action={
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigate(-1)} className="gap-2">
-              <ArrowLeft className="h-4 w-4" /> Back
-            </Button>
-            <Button size="sm" className="gap-2">
-              <CheckCircle2 className="h-4 w-4" /> Complete
-            </Button>
+    <div className="flex flex-col gap-4 max-w-4xl mx-auto">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-lg font-bold text-slate-900">{patientName}</h1>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="font-mono text-xs text-[#2563EB] font-semibold">{patient.patient_code}</span>
+              <StatusBadge status={patient.status} />
+            </div>
           </div>
-        }
-      />
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Left: patient summary + vitals */}
-        <div className="space-y-4 lg:col-span-1">
-          {/* Patient summary */}
-          <SectionCard title="Patient Summary">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-500">Status</span>
-                <StatusBadge status="in_consultation" />
-              </div>
-              <Separator />
-              {[
-                { label: 'Wife',     value: 'Amaka Okonkwo' },
-                { label: 'Husband', value: 'Chukwuemeka Okonkwo' },
-                { label: 'Age',     value: '32 yrs' },
-                { label: 'ID',      value: 'DT-2024-001' },
-                { label: 'Visit',   value: '1st visit' },
-              ].map(i => (
-                <div key={i.label} className="flex justify-between text-sm">
-                  <span className="text-slate-500">{i.label}</span>
-                  <span className="font-medium text-slate-900">{i.value}</span>
-                </div>
-              ))}
-            </div>
-          </SectionCard>
-
-          {/* Vitals */}
-          <SectionCard title="Vitals">
-            <div className="space-y-2">
-              {VITALS.map(v => (
-                <div key={v.label} className="flex justify-between text-sm">
-                  <span className="text-slate-500">{v.label}</span>
-                  <span className="font-medium text-slate-900">{v.value}</span>
-                </div>
-              ))}
-            </div>
-          </SectionCard>
-
-          {/* Lab results */}
-          <SectionCard title="Lab Results">
-            {LAB_RESULTS.length > 0 ? (
-              <div className="space-y-2">
-                {LAB_RESULTS.map(r => (
-                  <div key={r.test} className="flex items-center justify-between text-sm">
-                    <span className="text-slate-600">{r.test}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-slate-900">{r.value}</span>
-                      <span className={`text-xs rounded-full px-2 py-0.5 font-medium ${r.flag === 'low' ? 'bg-red-100 text-red-600' : r.flag === 'high' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
-                        {r.flag}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-slate-400 text-center py-4">No results yet</p>
-            )}
-          </SectionCard>
         </div>
+        {isReadOnly && (
+          <span className="text-xs bg-amber-100 text-amber-700 rounded-full px-3 py-1 font-medium">Read-only</span>
+        )}
+      </div>
 
-        {/* Right: SOAP note + orders */}
-        <div className="space-y-4 lg:col-span-2">
-          <Tabs defaultValue="soap">
-            <TabsList className="w-full sm:w-auto">
-              <TabsTrigger value="soap" className="gap-2"><FileText className="h-3.5 w-3.5" />SOAP Note</TabsTrigger>
-              <TabsTrigger value="tests" className="gap-2"><FlaskConical className="h-3.5 w-3.5" />Order Tests</TabsTrigger>
-              <TabsTrigger value="drugs" className="gap-2"><Pill className="h-3.5 w-3.5" />Prescribe</TabsTrigger>
-            </TabsList>
+      {/* Vitals summary */}
+      {vitals && (
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+          <VitalChip label="BP"    value={vitals.bp_systolic && vitals.bp_diastolic ? `${vitals.bp_systolic}/${vitals.bp_diastolic}` : '—'} />
+          <VitalChip label="Pulse" value={vitals.pulse ? `${vitals.pulse} bpm` : '—'} />
+          <VitalChip label="Temp"  value={vitals.temperature ? `${vitals.temperature}°C` : '—'} />
+          <VitalChip label="Wt"    value={vitals.weight ? `${vitals.weight} kg` : '—'} />
+          <VitalChip label="Persp" value={vitals.perspiration ?? '—'} />
+        </div>
+      )}
 
-            <TabsContent value="soap">
-              <FormSection title="SOAP Note">
-                <div className="space-y-4">
-                  {(['S', 'O', 'A', 'P'] as const).map(key => {
-                    const labels = { S: 'Subjective — Chief complaint & history', O: 'Objective — Examination findings', A: 'Assessment — Diagnosis', P: 'Plan — Treatment plan' }
+      {/* Main content tabs */}
+      <Tabs defaultValue="soap">
+        <TabsList className="w-full justify-start">
+          <TabsTrigger value="soap" className="gap-1.5">
+            SOAP Note
+          </TabsTrigger>
+          <TabsTrigger value="prescriptions" className="gap-1.5">
+            <Pill className="h-3.5 w-3.5" />
+            Prescriptions {prescriptions.length > 0 && `(${prescriptions.length})`}
+          </TabsTrigger>
+          <TabsTrigger value="lab" className="gap-1.5">
+            <FlaskConical className="h-3.5 w-3.5" />
+            Lab Orders {labOrders.length > 0 && `(${labOrders.length})`}
+          </TabsTrigger>
+        </TabsList>
+
+        {/* ── SOAP Note ── */}
+        <TabsContent value="soap" className="mt-4">
+          <SectionCard title="SOAP Note" description="Subjective · Objective · Assessment · Plan">
+            <div className="space-y-4">
+              <SoapField
+                label="S — Subjective"
+                value={soap.subjective}
+                onChange={v => setSoap(prev => ({ ...prev, subjective: v }))}
+                placeholder="Chief complaint, history of presenting illness, patient-reported symptoms…"
+              />
+              <SoapField
+                label="O — Objective"
+                value={soap.objective}
+                onChange={v => setSoap(prev => ({ ...prev, objective: v }))}
+                placeholder="Examination findings, test results, observations…"
+              />
+              <SoapField
+                label="A — Assessment"
+                value={soap.assessment}
+                onChange={v => setSoap(prev => ({ ...prev, assessment: v }))}
+                placeholder="Diagnosis, differential diagnoses…"
+              />
+              <SoapField
+                label="P — Plan"
+                value={soap.plan}
+                onChange={v => setSoap(prev => ({ ...prev, plan: v }))}
+                placeholder="Treatment plan, follow-up instructions, referrals…"
+              />
+              {!isReadOnly && (
+                <Button onClick={saveSOAP} disabled={savingSOAP} variant="outline" className="gap-2">
+                  {savingSOAP ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Save SOAP
+                </Button>
+              )}
+            </div>
+          </SectionCard>
+        </TabsContent>
+
+        {/* ── Prescriptions ── */}
+        <TabsContent value="prescriptions" className="mt-4">
+          <SectionCard title="Prescriptions" description="Drugs prescribed in this consultation">
+            <div className="space-y-4">
+              {/* List */}
+              {prescriptions.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-4">No prescriptions yet</p>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {prescriptions.map(rx => {
+                    const drug = drugs.find(d => d.id === rx.drug_id)
                     return (
-                      <div key={key} className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-slate-700">
-                          <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-[#2563EB] text-white text-[10px] font-bold mr-1.5">{key}</span>
-                          {labels[key]}
-                        </Label>
-                        <Textarea
-                          rows={3}
-                          placeholder={`Enter ${key === 'S' ? 'patient complaints…' : key === 'O' ? 'examination findings…' : key === 'A' ? 'diagnosis…' : 'treatment plan…'}`}
-                          value={soap[key]}
-                          onChange={e => setSoap(prev => ({ ...prev, [key]: e.target.value }))}
-                        />
+                      <div key={rx.id} className="flex items-center justify-between py-3 gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">{drug?.name ?? '—'}</p>
+                          <p className="text-xs text-slate-400">
+                            Qty: {rx.quantity} · ₦{rx.unit_price_at_time.toLocaleString()} each
+                          </p>
+                        </div>
+                        {!isReadOnly && (
+                          <Button
+                            variant="ghost" size="icon"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => handleRemoveDrug(rx.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     )
                   })}
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" size="sm">Save Draft</Button>
-                    <Button size="sm">Save Note</Button>
-                  </div>
                 </div>
-              </FormSection>
-            </TabsContent>
+              )}
 
-            <TabsContent value="tests">
-              <FormSection title="Order Lab Tests">
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {AVAILABLE_TESTS.map(t => (
-                    <button
-                      key={t}
-                      onClick={() => toggleTest(t)}
-                      className={`flex items-center gap-2 rounded-lg border p-3 text-sm text-left transition-colors ${selectedTests.includes(t) ? 'border-[#2563EB] bg-[#EFF6FF] text-[#2563EB]' : 'border-slate-200 hover:bg-slate-50 text-slate-700'}`}
-                    >
-                      <FlaskConical className="h-3.5 w-3.5 shrink-0" />
-                      <span className="leading-tight">{t}</span>
-                    </button>
-                  ))}
-                </div>
-                {selectedTests.length > 0 && (
-                  <div className="mt-4 flex items-center justify-between">
-                    <span className="text-sm text-slate-600">{selectedTests.length} test(s) selected</span>
-                    <Button size="sm">Send Orders</Button>
+              {/* Add form */}
+              {!isReadOnly && (
+                <>
+                  <Separator />
+                  <div className="flex flex-col gap-3">
+                    <p className="text-xs font-semibold text-slate-500">Add Prescription</p>
+                    <div className="flex gap-2">
+                      <Select value={selectedDrug} onValueChange={setSelectedDrug}>
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Select drug…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {drugs.map(d => (
+                            <SelectItem key={d.id} value={d.id}>
+                              {d.name} — ₦{d.unit_price.toLocaleString()}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number" min="1" max="999"
+                        value={drugQty}
+                        onChange={e => setDrugQty(e.target.value)}
+                        className="w-20"
+                        placeholder="Qty"
+                      />
+                      <Button
+                        onClick={handleAddDrug}
+                        disabled={!selectedDrug || addingDrug}
+                        className="gap-1.5 shrink-0"
+                      >
+                        {addingDrug ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                        Add
+                      </Button>
+                    </div>
                   </div>
-                )}
-              </FormSection>
-            </TabsContent>
+                </>
+              )}
+            </div>
+          </SectionCard>
+        </TabsContent>
 
-            <TabsContent value="drugs">
-              <FormSection title="Prescribe Medications">
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {AVAILABLE_DRUGS.map(d => (
-                    <button
-                      key={d}
-                      onClick={() => toggleDrug(d)}
-                      className={`flex items-center gap-2 rounded-lg border p-3 text-sm text-left transition-colors ${selectedDrugs.includes(d) ? 'border-[#0D9488] bg-teal-50 text-[#0D9488]' : 'border-slate-200 hover:bg-slate-50 text-slate-700'}`}
-                    >
-                      <Pill className="h-3.5 w-3.5 shrink-0" />
-                      {d}
-                    </button>
-                  ))}
+        {/* ── Lab Orders ── */}
+        <TabsContent value="lab" className="mt-4">
+          <SectionCard title="Lab Orders" description="Tests ordered for this patient">
+            <div className="space-y-4">
+              {/* List */}
+              {labOrders.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-4">No lab orders yet</p>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {labOrders.map(order => {
+                    const test = labTests.find(t => t.id === order.lab_test_id)
+                    return (
+                      <div key={order.id} className="flex items-center justify-between py-3 gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">{test?.name ?? '—'}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className={`text-xs rounded-full px-2 py-0.5 font-medium ${
+                              order.status === 'completed'   ? 'bg-green-100 text-green-700'
+                              : order.status === 'in_progress' ? 'bg-cyan-100 text-cyan-700'
+                              : order.status === 'assigned'    ? 'bg-blue-100 text-blue-700'
+                              : 'bg-amber-100 text-amber-700'
+                            }`}>{order.status.replace(/_/g, ' ')}</span>
+                            <span className="text-xs text-slate-400">₦{(test?.price ?? 0).toLocaleString()}</span>
+                          </div>
+                          {order.result_notes && (
+                            <p className="text-xs text-slate-600 mt-1 bg-green-50 rounded px-2 py-1">
+                              Result: {order.result_notes}
+                            </p>
+                          )}
+                        </div>
+                        {!isReadOnly && order.status === 'ordered' && (
+                          <Button
+                            variant="ghost" size="icon"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => handleRemoveTest(order.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
-                {selectedDrugs.length > 0 && (
-                  <div className="mt-4 flex items-center justify-between">
-                    <span className="text-sm text-slate-600">{selectedDrugs.length} drug(s) selected</span>
-                    <Button size="sm" className="bg-[#0D9488] hover:bg-[#0F766E]">Generate Prescription</Button>
+              )}
+
+              {/* Add form */}
+              {!isReadOnly && (
+                <>
+                  <Separator />
+                  <div className="flex flex-col gap-3">
+                    <p className="text-xs font-semibold text-slate-500">Order a Test</p>
+                    <div className="flex gap-2">
+                      <Select value={selectedTest} onValueChange={setSelectedTest}>
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Select test…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {labTests.map(t => (
+                            <SelectItem key={t.id} value={t.id}>
+                              {t.name} — ₦{t.price.toLocaleString()}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        onClick={handleAddTest}
+                        disabled={!selectedTest || addingTest}
+                        className="gap-1.5 shrink-0"
+                      >
+                        {addingTest ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                        Order
+                      </Button>
+                    </div>
                   </div>
-                )}
-              </FormSection>
-            </TabsContent>
-          </Tabs>
+                </>
+              )}
+            </div>
+          </SectionCard>
+        </TabsContent>
+      </Tabs>
+
+      {/* Action bar */}
+      {!isReadOnly && (
+        <div className="flex items-center justify-between gap-3 pb-6 pt-2 border-t border-slate-100">
+          <p className="text-xs text-slate-400">
+            {prescriptions.length} drug{prescriptions.length !== 1 ? 's' : ''} · {labOrders.length} test{labOrders.length !== 1 ? 's' : ''} ordered
+          </p>
+          <div className="flex gap-2">
+            {canSendToLab && (
+              <Button
+                variant="outline"
+                onClick={sendToLab}
+                disabled={finalizing}
+                className="gap-2 border-amber-200 text-amber-700 hover:bg-amber-50"
+              >
+                {finalizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendToBack className="h-4 w-4" />}
+                Send to Lab
+              </Button>
+            )}
+            {canFinalize && (
+              <Button
+                onClick={finalizeConsultation}
+                disabled={finalizing}
+                className="gap-2"
+              >
+                {finalizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                Finalize Consultation
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
