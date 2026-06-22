@@ -1,7 +1,8 @@
-import { Bell, Menu, ChevronDown, LogOut, User, Settings } from 'lucide-react'
+import { Bell, Menu, ChevronDown, LogOut, User } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from './AppContext'
-import { roleLabels, roleColors, type UserRole } from '@/lib/roles'
+import { useAuth } from '@/contexts/AuthContext'
+import { roleLabels, roleColors } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -10,13 +11,20 @@ import {
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Sidebar } from './Sidebar'
-import { cn } from '@/lib/utils'
-
-const ROLES: UserRole[] = ['superadmin', 'receptionist', 'nurse', 'doctor', 'lab_tech']
 
 export function Topbar() {
-  const { role, setRole, sidebarOpen, setSidebarOpen } = useApp()
-  const navigate = useNavigate()
+  const { sidebarOpen, setSidebarOpen } = useApp()
+  const { profile, signOut }            = useAuth()
+  const navigate                        = useNavigate()
+
+  const initials = profile?.full_name
+    ? profile.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+    : '?'
+
+  async function handleSignOut() {
+    await signOut()
+    navigate('/login', { replace: true })
+  }
 
   return (
     <>
@@ -34,46 +42,21 @@ export function Topbar() {
           <div className="hidden sm:block text-sm font-bold text-slate-900">Divine Trinity</div>
         </div>
 
-        {/* Right: role switcher + notifications + profile */}
+        {/* Right: role badge + notifications + profile */}
         <div className="flex items-center gap-2">
-          {/* Role switcher (demo tool) */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className={cn('hidden sm:flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium cursor-pointer border', roleColors[role])}>
-                {roleLabels[role]}
-                <ChevronDown className="h-3 w-3 opacity-70" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel className="text-xs">Switch Role (Demo)</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {ROLES.map(r => (
-                <DropdownMenuItem
-                  key={r}
-                  onClick={() => { setRole(r); navigate('/dashboard') }}
-                  className={cn(role === r && 'bg-slate-50 font-semibold')}
-                >
-                  {roleLabels[r]}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Role badge (read-only — real role from profile) */}
+          {profile && (
+            <span className={`hidden sm:inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${roleColors[profile.role]}`}>
+              {roleLabels[profile.role]}
+            </span>
+          )}
 
-          {/* Mobile role badge (tap to switch) */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className={cn('sm:hidden flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium', roleColors[role])}>
-                {roleLabels[role]}
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              {ROLES.map(r => (
-                <DropdownMenuItem key={r} onClick={() => { setRole(r); navigate('/dashboard') }}>
-                  {roleLabels[r]}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Mobile role badge */}
+          {profile && (
+            <span className={`sm:hidden inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${roleColors[profile.role]}`}>
+              {roleLabels[profile.role]}
+            </span>
+          )}
 
           {/* Notifications */}
           <Button variant="ghost" size="icon" className="relative">
@@ -86,23 +69,31 @@ export function Topbar() {
             <DropdownMenuTrigger asChild>
               <button className="flex items-center gap-2 rounded-full hover:bg-slate-50 px-1.5 py-1 transition-colors">
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback>AD</AvatarFallback>
+                  <AvatarFallback>{initials}</AvatarFallback>
                 </Avatar>
-                <div className="hidden sm:block text-left">
-                  <div className="text-xs font-semibold text-slate-800 leading-tight">Admin User</div>
-                  <div className="text-[10px] text-slate-400">admin@dtfc.ng</div>
-                </div>
+                {profile && (
+                  <div className="hidden sm:block text-left">
+                    <div className="text-xs font-semibold text-slate-800 leading-tight">{profile.full_name}</div>
+                    <div className="text-[10px] text-slate-400">{roleLabels[profile.role]}</div>
+                  </div>
+                )}
                 <ChevronDown className="hidden sm:block h-3.5 w-3.5 text-slate-400" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel>My Account</DropdownMenuLabel>
-              <DropdownMenuSeparator />
+              {profile && (
+                <>
+                  <DropdownMenuLabel className="font-normal">
+                    <p className="text-sm font-semibold text-slate-900">{profile.full_name}</p>
+                    <p className="text-xs text-slate-400">{roleLabels[profile.role]}</p>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                </>
+              )}
               <DropdownMenuItem><User className="h-4 w-4 mr-2" />Profile</DropdownMenuItem>
-              <DropdownMenuItem><Settings className="h-4 w-4 mr-2" />Settings</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-red-600">
-                <LogOut className="h-4 w-4 mr-2" />Log out
+              <DropdownMenuItem className="text-red-600" onClick={handleSignOut}>
+                <LogOut className="h-4 w-4 mr-2" />Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

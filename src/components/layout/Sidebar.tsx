@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useApp } from './AppContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { navByRole } from '@/lib/nav'
 
 const iconMap: Record<string, React.ElementType> = {
@@ -19,8 +20,10 @@ interface SidebarProps {
 }
 
 export function Sidebar({ mobile = false, onClose }: SidebarProps) {
-  const { role, sidebarCollapsed, setSidebarCollapsed } = useApp()
+  const { sidebarCollapsed, setSidebarCollapsed } = useApp()
+  const { profile } = useAuth()
   const location = useLocation()
+  const role     = profile?.role ?? 'receptionist'
   const navItems = navByRole[role]
   const collapsed = !mobile && sidebarCollapsed
 
@@ -48,7 +51,7 @@ export function Sidebar({ mobile = false, onClose }: SidebarProps) {
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
         {navItems.map(item => {
-          const Icon = iconMap[item.icon] ?? LayoutDashboard
+          const Icon   = iconMap[item.icon] ?? LayoutDashboard
           const active = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path))
           return (
             <NavLink

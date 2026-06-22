@@ -1,9 +1,8 @@
 import { createContext, useContext, useState } from 'react'
-import type { UserRole } from '@/lib/roles'
 
+// Role + user info live in AuthContext (src/contexts/AuthContext.tsx).
+// AppContext only holds UI state that persists across the shell.
 interface AppContextValue {
-  role: UserRole
-  setRole: (role: UserRole) => void
   sidebarOpen: boolean
   setSidebarOpen: (open: boolean) => void
   sidebarCollapsed: boolean
@@ -13,12 +12,11 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null)
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [role, setRole] = useState<UserRole>('superadmin')
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarOpen,      setSidebarOpen]      = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   return (
-    <AppContext.Provider value={{ role, setRole, sidebarOpen, setSidebarOpen, sidebarCollapsed, setSidebarCollapsed }}>
+    <AppContext.Provider value={{ sidebarOpen, setSidebarOpen, sidebarCollapsed, setSidebarCollapsed }}>
       {children}
     </AppContext.Provider>
   )

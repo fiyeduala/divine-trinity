@@ -1,25 +1,47 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Heart, Eye, EyeOff } from 'lucide-react'
+import { Heart, Eye, EyeOff, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useAuth } from '@/contexts/AuthContext'
 
 export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const navigate = useNavigate()
+  const [loading, setLoading]           = useState(false)
+  const [errorMsg, setErrorMsg]         = useState<string | null>(null)
+  const emailRef    = useRef<HTMLInputElement>(null)
+  const passwordRef = useRef<HTMLInputElement>(null)
+  const { signIn, user, configured }    = useAuth()
+  const navigate                        = useNavigate()
 
-  function handleSubmit(e: React.FormEvent) {
+  // If already authenticated, skip to dashboard
+  useEffect(() => {
+    if (user) navigate('/dashboard', { replace: true })
+  }, [user, navigate])
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    setErrorMsg(null)
     setLoading(true)
-    setTimeout(() => { setLoading(false); navigate('/dashboard') }, 800)
+    const email    = emailRef.current?.value    ?? ''
+    const password = passwordRef.current?.value ?? ''
+    const { error } = await signIn(email, password)
+    setLoading(false)
+    if (error) {
+      setErrorMsg(
+        error.message === 'Invalid login credentials'
+          ? 'Invalid email or password. Please try again.'
+          : error.message
+      )
+    } else {
+      navigate('/dashboard', { replace: true })
+    }
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#EFF6FF] via-white to-[#F0FDFA] flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Card */}
         <div className="bg-white rounded-2xl shadow-lg border border-slate-100 p-8">
           {/* Logo */}
           <div className="flex flex-col items-center mb-8">
@@ -30,15 +52,31 @@ export function LoginPage() {
             <p className="text-sm text-slate-500">Fertility Clinic — Staff Portal</p>
           </div>
 
+          {!configured && (
+            <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-100 p-3 mb-5 text-sm text-amber-800">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>Supabase is not configured. See <code className="font-mono text-xs">.env.local.example</code>.</span>
+            </div>
+          )}
+
+          {errorMsg && (
+            <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-100 p-3 mb-5 text-sm text-red-700">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">
               <Label htmlFor="email">Email address</Label>
               <Input
                 id="email"
+                ref={emailRef}
                 type="email"
                 placeholder="staff@divinetrinity.ng"
                 autoComplete="email"
                 required
+                disabled={loading}
               />
             </div>
 
@@ -52,10 +90,12 @@ export function LoginPage() {
               <div className="relative">
                 <Input
                   id="password"
+                  ref={passwordRef}
                   type={showPassword ? 'text' : 'password'}
                   placeholder="••••••••"
                   autoComplete="current-password"
                   required
+                  disabled={loading}
                   className="pr-10"
                 />
                 <button
@@ -68,7 +108,7 @@ export function LoginPage() {
               </div>
             </div>
 
-            <Button type="submit" className="w-full" size="lg" disabled={loading}>
+            <Button type="submit" className="w-full" size="lg" disabled={loading || !configured}>
               {loading ? 'Signing in…' : 'Sign in'}
             </Button>
           </form>
