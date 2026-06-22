@@ -4,9 +4,9 @@ import { supabase, supabaseConfigured } from '@/lib/supabase'
 import type { Profile } from '@/lib/database.types'
 
 interface AuthContextValue {
-  user:    User | null
-  profile: Profile | null
-  loading: boolean
+  user:       User | null
+  profile:    Profile | null
+  loading:    boolean
   configured: boolean
   signIn:  (email: string, password: string) => Promise<{ error: AuthError | null }>
   signOut: () => Promise<void>
@@ -25,7 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .select('*')
       .eq('id', uid)
       .single()
-    setProfile(data ?? null)
+    setProfile((data as Profile) ?? null)
   }
 
   useEffect(() => {
@@ -44,14 +44,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     })
 
-    // Keep session in sync with auth state changes
+    // Keep session in sync — set loading=true while profile re-fetches after sign-in
+    // to prevent ProtectedRoute seeing user≠null + profile=null and redirecting to /login
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const nextUser = session?.user ?? null
       setUser(nextUser)
       if (nextUser) {
-        loadProfile(nextUser.id)
+        setLoading(true)
+        loadProfile(nextUser.id).finally(() => setLoading(false))
       } else {
         setProfile(null)
+        setLoading(false)
       }
     })
 
