@@ -1,4 +1,4 @@
-import { Users, UserCheck, FlaskConical, DollarSign, Clock, TrendingUp } from 'lucide-react'
+import { Users, UserCheck, FlaskConical, DollarSign } from 'lucide-react'
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -65,7 +65,7 @@ export function SuperadminDashboard() {
               <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
               <XAxis dataKey="day" tick={{ fontSize: 12, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 12, fill: '#94A3B8' }} axisLine={false} tickLine={false} tickFormatter={v => `₦${(v/1000).toFixed(0)}k`} />
-              <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E2E8F0', fontSize: 12 }} formatter={(v: number) => [`₦${v.toLocaleString()}`, 'Revenue']} />
+              <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E2E8F0', fontSize: 12 }} formatter={(v) => [`₦${Number(v).toLocaleString()}`, 'Revenue']} />
               <Bar dataKey="revenue" fill="#0D9488" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>

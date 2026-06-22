@@ -28,7 +28,7 @@ interface DataTableProps<T> {
   rowKey?: keyof T           // unique key for row (defaults to row index)
 }
 
-export function DataTable<T extends Record<string, unknown>>({
+export function DataTable<T extends object>({
   data, columns, searchable = true, searchPlaceholder = 'Search…',
   searchKey, searchKeys,
   pageSize = 10, emptyMessage = 'No records found.', className,
@@ -41,18 +41,21 @@ export function DataTable<T extends Record<string, unknown>>({
 
   const filtered = searchable && query
     ? data.filter(row => {
+        const r = row as Record<string, unknown>
         const keys = searchKeys ?? (searchKey ? [searchKey] : null)
         const val  = keys
-          ? keys.map(k => String(row[k] ?? '')).join(' ')
-          : Object.values(row).join(' ')
+          ? keys.map(k => String(r[k as string] ?? '')).join(' ')
+          : Object.values(r).join(' ')
         return val.toLowerCase().includes(query.toLowerCase())
       })
     : data
 
   const sorted = sortKey
     ? [...filtered].sort((a, b) => {
-        const av = String(a[sortKey] ?? '')
-        const bv = String(b[sortKey] ?? '')
+        const ar = a as Record<string, unknown>
+        const br = b as Record<string, unknown>
+        const av = String(ar[sortKey] ?? '')
+        const bv = String(br[sortKey] ?? '')
         return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av)
       })
     : filtered
@@ -69,10 +72,10 @@ export function DataTable<T extends Record<string, unknown>>({
   function colHeader(col: Column<T>) { return col.label ?? col.header ?? String(col.key) }
   function colCell(col: Column<T>, row: T) {
     const fn = col.render ?? col.cell
-    return fn ? fn(row) : String(row[col.key as keyof T] ?? '')
+    return fn ? fn(row) : String((row as Record<string, unknown>)[col.key as string] ?? '')
   }
   function rowId(row: T, i: number) {
-    return rowKey ? String(row[rowKey]) : i
+    return rowKey ? String((row as Record<string, unknown>)[rowKey as string]) : i
   }
 
   return (

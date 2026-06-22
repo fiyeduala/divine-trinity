@@ -99,7 +99,7 @@ export async function updatePatientStatus(
 // ── Insert helpers ─────────────────────────────────────────────────────────────
 
 export type PatientInsert = Omit<Patient,
-  'id' | 'patient_code' | 'created_at' | 'confirmed_by' | 'confirmed_at'
+  'id' | 'patient_code' | 'created_at' | 'confirmed_by' | 'confirmed_at' | 'status'
 >
 
 export async function createDraftPatient(fields: PatientInsert) {
@@ -115,7 +115,7 @@ export async function createDraftPatient(fields: PatientInsert) {
 
 /** Receptionist-direct registration: insert + immediately confirm in one go */
 export async function createRegisteredPatient(
-  fields: Omit<PatientInsert, 'status' | 'source'>,
+  fields: Omit<PatientInsert, 'source' | 'created_by'>,
   createdBy: string
 ) {
   const { data: inserted, error: insertErr } = await supabase

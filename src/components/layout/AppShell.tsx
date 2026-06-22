@@ -5,7 +5,7 @@ import { Topbar } from './Topbar'
 import { useApp } from './AppContext'
 
 export function AppShell() {
-  const { sidebarCollapsed } = useApp()
+  useApp()
 
   return (
     <div className="flex h-full bg-slate-50">

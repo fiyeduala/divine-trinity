@@ -3,7 +3,6 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
 import { PatientCard } from '@/components/shared/PatientCard'
 import { SectionCard } from '@/components/shared/SectionCard'
-import { StatusBadge } from '@/components/shared/StatusBadge'
 import { Button } from '@/components/ui/button'
 import { MOCK_PATIENTS, MOCK_LAB_ORDERS } from '@/lib/mockData'
 
