@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider }      from './contexts/AuthContext'
 import { AppProvider }       from './components/layout/AppContext'
 import { ProtectedRoute }    from './components/auth/ProtectedRoute'
@@ -15,6 +15,8 @@ import { LabTechDashboard }  from './pages/dashboards/LabTechDashboard'
 import { FinancePage }       from './pages/FinancePage'
 import { StaffPage }         from './pages/admin/StaffPage'
 import { CatalogPage }       from './pages/admin/CatalogPage'
+import { QrPage }            from './pages/QrPage'
+import { NotFoundPage }      from './pages/NotFoundPage'
 
 export default function App() {
   return (
@@ -41,14 +43,18 @@ export default function App() {
                 <Route path="/lab"                element={<LabTechDashboard />} />
                 <Route path="/results"            element={<LabTechDashboard />} />
                 <Route path="/finance"            element={<FinancePage />} />
-                <Route path="/reports"            element={<CatalogPage />} />
-                <Route path="/settings"           element={<StaffPage />} />
-                <Route path="/qr"                 element={<DashboardRouter />} />
+                <Route path="/qr"                 element={<QrPage />} />
                 <Route path="/register"           element={<PatientsPage />} />
+
+                {/* Superadmin-only routes */}
+                <Route element={<ProtectedRoute allowedRoles={['superadmin']} />}>
+                  <Route path="/settings"         element={<StaffPage />} />
+                  <Route path="/reports"          element={<CatalogPage />} />
+                </Route>
               </Route>
             </Route>
 
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </AppProvider>
       </AuthProvider>

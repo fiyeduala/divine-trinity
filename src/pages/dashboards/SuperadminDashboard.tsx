@@ -18,7 +18,7 @@ import {
 import { fetchPatients } from '@/lib/patientQueries'
 import type { Patient } from '@/lib/database.types'
 
-function fmtN(n: number) { return 'N' + Number(n).toLocaleString() }
+function fmtN(n: number) { return '₦' + Number(n).toLocaleString() }
 function patientName(p: Patient) {
   return `${p.wife_surname ?? ''} ${p.wife_other_names ?? ''}`.trim() || '—'
 }
@@ -130,8 +130,8 @@ export function SuperadminDashboard() {
             <BarChart data={trend}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
               <XAxis dataKey="day" tick={{ fontSize: 12, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 12, fill: '#94A3B8' }} axisLine={false} tickLine={false} tickFormatter={v => `N${(v / 1000).toFixed(0)}k`} />
-              <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E2E8F0', fontSize: 12 }} formatter={(v) => [`N${Number(v).toLocaleString()}`, 'Revenue']} />
+              <YAxis tick={{ fontSize: 12, fill: '#94A3B8' }} axisLine={false} tickLine={false} tickFormatter={v => `₦${(v / 1000).toFixed(0)}k`} />
+              <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E2E8F0', fontSize: 12 }} formatter={(v) => [`₦${Number(v).toLocaleString()}`, 'Revenue']} />
               <Bar dataKey="revenue" fill="#0D9488" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>

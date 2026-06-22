@@ -15,7 +15,7 @@ import {
 import { toast } from 'sonner'
 import type { Drug, LabTest } from '@/lib/database.types'
 
-function fmtN(n: number) { return 'N' + Number(n).toLocaleString() }
+function fmtN(n: number) { return '₦' + Number(n).toLocaleString() }
 
 // ── Reusable row components ───────────────────────────────────────────────────
 
