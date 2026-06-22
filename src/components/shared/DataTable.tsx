@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
-import { Input } from '@/components/ui/input'
+import { Input }  from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { cn }     from '@/lib/utils'
 
 export interface Column<T> {
   key: keyof T | string
-  header: string
+  header?: string
+  label?: string          // alias for header
   cell?: (row: T) => React.ReactNode
+  render?: (row: T) => React.ReactNode  // alias for cell
   sortable?: boolean
   className?: string
 }
@@ -18,23 +20,31 @@ interface DataTableProps<T> {
   searchable?: boolean
   searchPlaceholder?: string
   searchKey?: keyof T
+  searchKeys?: (keyof T)[]   // search across multiple fields
   pageSize?: number
   emptyMessage?: string
   className?: string
+  onRowClick?: (row: T) => void
+  rowKey?: keyof T           // unique key for row (defaults to row index)
 }
 
 export function DataTable<T extends Record<string, unknown>>({
-  data, columns, searchable = true, searchPlaceholder = 'Search…', searchKey,
+  data, columns, searchable = true, searchPlaceholder = 'Search…',
+  searchKey, searchKeys,
   pageSize = 10, emptyMessage = 'No records found.', className,
+  onRowClick, rowKey,
 }: DataTableProps<T>) {
-  const [query, setQuery] = useState('')
+  const [query,   setQuery]   = useState('')
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
-  const [page, setPage] = useState(0)
+  const [page,    setPage]    = useState(0)
 
   const filtered = searchable && query
     ? data.filter(row => {
-        const val = searchKey ? String(row[searchKey] ?? '') : Object.values(row).join(' ')
+        const keys = searchKeys ?? (searchKey ? [searchKey] : null)
+        const val  = keys
+          ? keys.map(k => String(row[k] ?? '')).join(' ')
+          : Object.values(row).join(' ')
         return val.toLowerCase().includes(query.toLowerCase())
       })
     : data
@@ -48,12 +58,21 @@ export function DataTable<T extends Record<string, unknown>>({
     : filtered
 
   const totalPages = Math.ceil(sorted.length / pageSize)
-  const paged = sorted.slice(page * pageSize, (page + 1) * pageSize)
+  const paged      = sorted.slice(page * pageSize, (page + 1) * pageSize)
 
   function toggleSort(key: string) {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortKey(key); setSortDir('asc') }
     setPage(0)
+  }
+
+  function colHeader(col: Column<T>) { return col.label ?? col.header ?? String(col.key) }
+  function colCell(col: Column<T>, row: T) {
+    const fn = col.render ?? col.cell
+    return fn ? fn(row) : String(row[col.key as keyof T] ?? '')
+  }
+  function rowId(row: T, i: number) {
+    return rowKey ? String(row[rowKey]) : i
   }
 
   return (
@@ -82,7 +101,7 @@ export function DataTable<T extends Record<string, unknown>>({
                   onClick={() => col.sortable && toggleSort(String(col.key))}
                 >
                   <div className="flex items-center gap-1">
-                    {col.header}
+                    {colHeader(col)}
                     {col.sortable && sortKey === String(col.key) && (
                       sortDir === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
                     )}
@@ -96,10 +115,14 @@ export function DataTable<T extends Record<string, unknown>>({
               <tr><td colSpan={columns.length} className="px-4 py-12 text-center text-sm text-slate-400">{emptyMessage}</td></tr>
             ) : (
               paged.map((row, i) => (
-                <tr key={i} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                <tr
+                  key={rowId(row, i)}
+                  onClick={() => onRowClick?.(row)}
+                  className={cn('border-b border-slate-50 hover:bg-slate-50 transition-colors', onRowClick && 'cursor-pointer')}
+                >
                   {columns.map(col => (
                     <td key={String(col.key)} className={cn('px-4 py-3 text-slate-700', col.className)}>
-                      {col.cell ? col.cell(row) : String(row[col.key as keyof T] ?? '')}
+                      {colCell(col, row)}
                     </td>
                   ))}
                 </tr>
@@ -115,13 +138,15 @@ export function DataTable<T extends Record<string, unknown>>({
           <p className="text-center text-sm text-slate-400 py-8">{emptyMessage}</p>
         ) : (
           paged.map((row, i) => (
-            <div key={i} className="rounded-xl bg-white border border-slate-100 p-4 space-y-2">
+            <div
+              key={rowId(row, i)}
+              onClick={() => onRowClick?.(row)}
+              className={cn('rounded-xl bg-white border border-slate-100 p-4 space-y-2', onRowClick && 'cursor-pointer hover:border-[#2563EB]/30 transition-colors')}
+            >
               {columns.map(col => (
                 <div key={String(col.key)} className="flex justify-between gap-4 text-sm">
-                  <span className="text-xs font-medium text-slate-400 shrink-0">{col.header}</span>
-                  <span className="text-slate-700 text-right">
-                    {col.cell ? col.cell(row) : String(row[col.key as keyof T] ?? '')}
-                  </span>
+                  <span className="text-xs font-medium text-slate-400 shrink-0">{colHeader(col)}</span>
+                  <span className="text-slate-700 text-right">{colCell(col, row)}</span>
                 </div>
               ))}
             </div>

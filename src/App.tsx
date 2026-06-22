@@ -10,6 +10,7 @@ import { PatientsPage }      from './pages/PatientsPage'
 import { QueuePage }         from './pages/QueuePage'
 import { ConsultationPage }  from './pages/ConsultationPage'
 import { PatientFolderPage } from './pages/PatientFolderPage'
+import { NewPatientPage }    from './pages/receptionist/NewPatientPage'
 
 export default function App() {
   return (
@@ -27,6 +28,7 @@ export default function App() {
               <Route element={<AppShell />}>
                 <Route path="/dashboard"          element={<DashboardRouter />} />
                 <Route path="/patients"           element={<PatientsPage />} />
+                <Route path="/patients/new"       element={<NewPatientPage />} />
                 <Route path="/patients/:id"       element={<PatientFolderPage />} />
                 <Route path="/queue"              element={<QueuePage />} />
                 <Route path="/triage"             element={<QueuePage />} />

@@ -1,19 +1,27 @@
 import { useState } from 'react'
-import { Heart, CheckCircle2, ChevronRight, ChevronLeft } from 'lucide-react'
+import { Heart, CheckCircle2, ChevronRight, ChevronLeft, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { FormSection } from '@/components/shared/SectionCard'
+import { createDraftPatient } from '@/lib/patientQueries'
+import type { PatientInsert } from '@/lib/patientQueries'
 
-const steps = ['Wife Details', 'Husband Details', 'Other Info', 'Contact Person']
+const STEPS = ['Wife Details', 'Husband Details', 'Other Info', 'Contact Person']
 
-function StepIndicator({ current, total }: { current: number; total: number }) {
+// ── Tiny sub-components ───────────────────────────────────────────────────────
+
+function StepBar({ current, total }: { current: number; total: number }) {
   return (
     <div className="flex items-center gap-2 mb-6">
       {Array.from({ length: total }).map((_, i) => (
         <div key={i} className="flex items-center gap-2 flex-1">
-          <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-colors ${i < current ? 'bg-[#2563EB] text-white' : i === current ? 'bg-[#2563EB] text-white ring-4 ring-[#DBEAFE]' : 'bg-slate-100 text-slate-400'}`}>
+          <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-colors ${
+            i < current  ? 'bg-[#2563EB] text-white'
+            : i === current ? 'bg-[#2563EB] text-white ring-4 ring-[#DBEAFE]'
+            : 'bg-slate-100 text-slate-400'
+          }`}>
             {i < current ? <CheckCircle2 className="h-4 w-4" /> : i + 1}
           </div>
           {i < total - 1 && <div className={`h-0.5 flex-1 ${i < current ? 'bg-[#2563EB]' : 'bg-slate-200'}`} />}
@@ -23,26 +31,102 @@ function StepIndicator({ current, total }: { current: number; total: number }) {
   )
 }
 
-function FieldRow({ children }: { children: React.ReactNode }) {
+function Row({ children }: { children: React.ReactNode }) {
   return <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{children}</div>
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <Label>{label}</Label>
+      <Label>{label}{required && <span className="text-red-500 ml-0.5">*</span>}</Label>
       {children}
     </div>
   )
 }
 
-export function RegisterPage() {
-  const [step, setStep] = useState(0)
-  const [submitted, setSubmitted] = useState(false)
+// ── Main form ─────────────────────────────────────────────────────────────────
 
-  function next() { if (step < steps.length - 1) setStep(s => s + 1) }
+type FormState = {
+  wife_surname: string; wife_other_names: string; wife_phone: string
+  wife_dob: string; wife_age: string; address: string; email: string; occupation: string
+  husband_surname: string; husband_other_names: string; husband_phone: string
+  husband_email: string; husband_age: string
+  religion: string; marital_status: string; married_duration: string
+  previous_surgery: string; gravida: string
+  contact_name: string; contact_phone: string; contact_address: string; contact_email: string
+}
+
+const EMPTY: FormState = {
+  wife_surname: '', wife_other_names: '', wife_phone: '', wife_dob: '', wife_age: '',
+  address: '', email: '', occupation: '',
+  husband_surname: '', husband_other_names: '', husband_phone: '',
+  husband_email: '', husband_age: '',
+  religion: '', marital_status: '', married_duration: '', previous_surgery: '', gravida: '0',
+  contact_name: '', contact_phone: '', contact_address: '', contact_email: '',
+}
+
+export function RegisterPage() {
+  const [step,      setStep]      = useState(0)
+  const [form,      setForm]      = useState<FormState>(EMPTY)
+  const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [errorMsg,  setErrorMsg]  = useState<string | null>(null)
+
+  function set(key: keyof FormState, value: string) {
+    setForm(prev => ({ ...prev, [key]: value }))
+    // Auto-compute age from DOB
+    if (key === 'wife_dob' && value) {
+      const age = Math.floor((Date.now() - new Date(value).getTime()) / (365.25 * 24 * 3600 * 1000))
+      setForm(prev => ({ ...prev, wife_dob: value, wife_age: age.toString() }))
+    }
+    if (key === 'husband_age') {
+      setForm(prev => ({ ...prev, husband_age: value }))
+    }
+  }
+
+  function next() { if (step < STEPS.length - 1) setStep(s => s + 1) }
   function back() { if (step > 0) setStep(s => s - 1) }
-  function submit() { setSubmitted(true) }
+
+  async function submit() {
+    setSubmitting(true)
+    setErrorMsg(null)
+    try {
+      const payload: PatientInsert = {
+        wife_surname:        form.wife_surname.trim(),
+        wife_other_names:    form.wife_other_names.trim(),
+        wife_phone:          form.wife_phone.trim(),
+        wife_dob:            form.wife_dob || null,
+        wife_age:            form.wife_age ? parseInt(form.wife_age) : null,
+        address:             form.address.trim() || null,
+        email:               form.email.trim() || null,
+        occupation:          form.occupation.trim() || null,
+        husband_surname:     form.husband_surname.trim() || null,
+        husband_other_names: form.husband_other_names.trim() || null,
+        husband_phone:       form.husband_phone.trim() || null,
+        husband_email:       form.husband_email.trim() || null,
+        husband_age:         form.husband_age ? parseInt(form.husband_age) : null,
+        religion:            form.religion || null,
+        marital_status:      form.marital_status || null,
+        married_duration:    form.married_duration.trim() || null,
+        previous_surgery:    form.previous_surgery || null,
+        gravida:             parseInt(form.gravida) || 0,
+        contact_name:        form.contact_name.trim() || null,
+        contact_phone:       form.contact_phone.trim() || null,
+        contact_address:     form.contact_address.trim() || null,
+        contact_email:       form.contact_email.trim() || null,
+        source:              'self_qr',
+        created_by:          null,
+        assigned_doctor_id:  null,
+        assigned_room:       null,
+      }
+      await createDraftPatient(payload)
+      setSubmitted(true)
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Submission failed. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   if (submitted) {
     return (
@@ -52,8 +136,12 @@ export function RegisterPage() {
             <CheckCircle2 className="h-8 w-8 text-green-600" />
           </div>
           <h2 className="text-lg font-bold text-slate-900 mb-2">Registration Submitted!</h2>
-          <p className="text-sm text-slate-500 mb-6">Your information has been received. Please proceed to the reception desk for confirmation.</p>
-          <Button onClick={() => setSubmitted(false)} variant="outline" className="w-full">Register another patient</Button>
+          <p className="text-sm text-slate-500 mb-6">
+            Your information has been received. Please proceed to the reception desk — a staff member will confirm your registration and issue your patient ID.
+          </p>
+          <Button onClick={() => { setSubmitted(false); setForm(EMPTY); setStep(0) }} variant="outline" className="w-full">
+            Register another patient
+          </Button>
         </div>
       </div>
     )
@@ -61,7 +149,6 @@ export function RegisterPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#EFF6FF] via-white to-[#F0FDFA] flex flex-col">
-      {/* Header */}
       <header className="flex items-center gap-3 px-4 py-4 bg-white border-b border-slate-100">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#2563EB]">
           <Heart className="h-4 w-4 text-white" fill="white" />
@@ -74,34 +161,40 @@ export function RegisterPage() {
 
       <div className="flex-1 flex items-start justify-center p-4 pt-6">
         <div className="w-full max-w-lg">
-          {/* Step progress */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 mb-4">
             <h2 className="text-base font-semibold text-slate-900 mb-1">
-              Step {step + 1} of {steps.length}: {steps[step]}
+              Step {step + 1} of {STEPS.length}: {STEPS[step]}
             </h2>
-            <p className="text-xs text-slate-500 mb-4">Please fill in all required fields accurately.</p>
-            <StepIndicator current={step} total={steps.length} />
+            <p className="text-xs text-slate-500 mb-4">Fields marked <span className="text-red-500">*</span> are required.</p>
+            <StepBar current={step} total={STEPS.length} />
           </div>
 
-          {/* Step content */}
+          {errorMsg && (
+            <div className="flex items-start gap-2 rounded-xl bg-red-50 border border-red-100 p-3 mb-4 text-sm text-red-700">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              {errorMsg}
+            </div>
+          )}
+
+          {/* Step 0 — Wife */}
           {step === 0 && (
             <FormSection title="Wife / Female Partner Details">
               <div className="space-y-4">
-                <FieldRow>
-                  <Field label="First Name *"><Input placeholder="e.g. Amaka" /></Field>
-                  <Field label="Last Name *"><Input placeholder="e.g. Okonkwo" /></Field>
-                </FieldRow>
-                <FieldRow>
-                  <Field label="Date of Birth *"><Input type="date" /></Field>
-                  <Field label="Age"><Input type="number" placeholder="Auto-calculated" readOnly /></Field>
-                </FieldRow>
-                <FieldRow>
-                  <Field label="Phone Number *"><Input type="tel" placeholder="+234 801 234 5678" /></Field>
-                  <Field label="Email Address"><Input type="email" placeholder="amaka@email.com" /></Field>
-                </FieldRow>
-                <FieldRow>
-                  <Field label="Marital Status *">
-                    <Select>
+                <Row>
+                  <Field label="Surname" required><Input value={form.wife_surname} onChange={e => set('wife_surname', e.target.value)} placeholder="e.g. Okonkwo" /></Field>
+                  <Field label="Other Names" required><Input value={form.wife_other_names} onChange={e => set('wife_other_names', e.target.value)} placeholder="e.g. Amaka" /></Field>
+                </Row>
+                <Row>
+                  <Field label="Phone Number" required><Input type="tel" value={form.wife_phone} onChange={e => set('wife_phone', e.target.value)} placeholder="+234 801 234 5678" /></Field>
+                  <Field label="Email"><Input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="amaka@email.com" /></Field>
+                </Row>
+                <Row>
+                  <Field label="Date of Birth"><Input type="date" value={form.wife_dob} onChange={e => set('wife_dob', e.target.value)} /></Field>
+                  <Field label="Age (auto-filled)"><Input type="number" value={form.wife_age} onChange={e => set('wife_age', e.target.value)} placeholder="Years" /></Field>
+                </Row>
+                <Row>
+                  <Field label="Marital Status">
+                    <Select value={form.marital_status} onValueChange={v => set('marital_status', v)}>
                       <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="married">Married</SelectItem>
@@ -111,11 +204,11 @@ export function RegisterPage() {
                       </SelectContent>
                     </Select>
                   </Field>
-                  <Field label="Occupation"><Input placeholder="e.g. Nurse" /></Field>
-                </FieldRow>
-                <FieldRow>
-                  <Field label="Previous Surgery?">
-                    <Select>
+                  <Field label="Duration of Marriage"><Input value={form.married_duration} onChange={e => set('married_duration', e.target.value)} placeholder="e.g. 3 years" /></Field>
+                </Row>
+                <Row>
+                  <Field label="Previous Surgery">
+                    <Select value={form.previous_surgery ?? ''} onValueChange={v => set('previous_surgery', v)}>
                       <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">None</SelectItem>
@@ -125,114 +218,68 @@ export function RegisterPage() {
                       </SelectContent>
                     </Select>
                   </Field>
-                  <Field label="Number of Children">
-                    <Input type="number" min="0" placeholder="0" />
-                  </Field>
-                </FieldRow>
-                <Field label="Home Address *"><Input placeholder="Full address" /></Field>
+                  <Field label="No. of Children (Gravida)"><Input type="number" min="0" value={form.gravida} onChange={e => set('gravida', e.target.value)} placeholder="0" /></Field>
+                </Row>
+                <Row>
+                  <Field label="Occupation"><Input value={form.occupation} onChange={e => set('occupation', e.target.value)} placeholder="e.g. Nurse" /></Field>
+                </Row>
+                <Field label="Home Address"><Input value={form.address} onChange={e => set('address', e.target.value)} placeholder="Full home address" /></Field>
               </div>
             </FormSection>
           )}
 
+          {/* Step 1 — Husband */}
           {step === 1 && (
             <FormSection title="Husband / Male Partner Details">
               <div className="space-y-4">
-                <FieldRow>
-                  <Field label="First Name *"><Input placeholder="e.g. Chukwuemeka" /></Field>
-                  <Field label="Last Name *"><Input placeholder="e.g. Okonkwo" /></Field>
-                </FieldRow>
-                <FieldRow>
-                  <Field label="Date of Birth"><Input type="date" /></Field>
-                  <Field label="Age"><Input type="number" placeholder="Auto-calculated" readOnly /></Field>
-                </FieldRow>
-                <FieldRow>
-                  <Field label="Phone Number *"><Input type="tel" placeholder="+234 801 234 5678" /></Field>
-                  <Field label="Email Address"><Input type="email" placeholder="emeka@email.com" /></Field>
-                </FieldRow>
-                <FieldRow>
-                  <Field label="Occupation"><Input placeholder="e.g. Engineer" /></Field>
-                  <Field label="Previous Surgery?">
-                    <Select>
-                      <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
-                        <SelectItem value="hernia">Hernia repair</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                </FieldRow>
-                <Field label="Home Address"><Input placeholder="Same as wife if identical" /></Field>
+                <Row>
+                  <Field label="Surname"><Input value={form.husband_surname} onChange={e => set('husband_surname', e.target.value)} placeholder="e.g. Okonkwo" /></Field>
+                  <Field label="Other Names"><Input value={form.husband_other_names} onChange={e => set('husband_other_names', e.target.value)} placeholder="e.g. Chukwuemeka" /></Field>
+                </Row>
+                <Row>
+                  <Field label="Phone Number"><Input type="tel" value={form.husband_phone} onChange={e => set('husband_phone', e.target.value)} placeholder="+234 801 234 5678" /></Field>
+                  <Field label="Email"><Input type="email" value={form.husband_email} onChange={e => set('husband_email', e.target.value)} placeholder="emeka@email.com" /></Field>
+                </Row>
+                <Row>
+                  <Field label="Age"><Input type="number" value={form.husband_age} onChange={e => set('husband_age', e.target.value)} placeholder="Years" /></Field>
+                </Row>
               </div>
             </FormSection>
           )}
 
+          {/* Step 2 — Other info */}
           {step === 2 && (
             <FormSection title="Additional Information">
               <div className="space-y-4">
-                <FieldRow>
+                <Row>
                   <Field label="Religion">
-                    <Select>
+                    <Select value={form.religion} onValueChange={v => set('religion', v)}>
                       <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="christianity">Christianity</SelectItem>
-                        <SelectItem value="islam">Islam</SelectItem>
-                        <SelectItem value="traditional">Traditional</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
+                        <SelectItem value="Christianity">Christianity</SelectItem>
+                        <SelectItem value="Islam">Islam</SelectItem>
+                        <SelectItem value="Traditional">Traditional</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
                       </SelectContent>
                     </Select>
                   </Field>
-                  <Field label="Tribe / Ethnicity"><Input placeholder="e.g. Igbo" /></Field>
-                </FieldRow>
-                <FieldRow>
-                  <Field label="Referral Source">
-                    <Select>
-                      <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="walk_in">Walk-in</SelectItem>
-                        <SelectItem value="doctor_referral">Doctor referral</SelectItem>
-                        <SelectItem value="social_media">Social media</SelectItem>
-                        <SelectItem value="friend">Friend / Family</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  <Field label="Blood Group (Wife)">
-                    <Select>
-                      <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                      <SelectContent>
-                        {['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(bg => (
-                          <SelectItem key={bg} value={bg}>{bg}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                </FieldRow>
+                </Row>
               </div>
             </FormSection>
           )}
 
+          {/* Step 3 — Contact */}
           {step === 3 && (
             <FormSection title="Emergency / Contact Person">
               <div className="space-y-4">
-                <FieldRow>
-                  <Field label="Contact Name *"><Input placeholder="Full name" /></Field>
-                  <Field label="Relationship *">
-                    <Select>
-                      <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="parent">Parent</SelectItem>
-                        <SelectItem value="sibling">Sibling</SelectItem>
-                        <SelectItem value="friend">Friend</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                </FieldRow>
-                <FieldRow>
-                  <Field label="Phone Number *"><Input type="tel" placeholder="+234 801 234 5678" /></Field>
-                  <Field label="Alternative Phone"><Input type="tel" placeholder="+234 701 234 5678" /></Field>
-                </FieldRow>
-                <Field label="Address"><Input placeholder="Contact person address" /></Field>
+                <Row>
+                  <Field label="Contact Name" required><Input value={form.contact_name} onChange={e => set('contact_name', e.target.value)} placeholder="Full name" /></Field>
+                  <Field label="Phone Number" required><Input type="tel" value={form.contact_phone} onChange={e => set('contact_phone', e.target.value)} placeholder="+234 801 234 5678" /></Field>
+                </Row>
+                <Row>
+                  <Field label="Email"><Input type="email" value={form.contact_email} onChange={e => set('contact_email', e.target.value)} placeholder="contact@email.com" /></Field>
+                </Row>
+                <Field label="Address"><Input value={form.contact_address} onChange={e => set('contact_address', e.target.value)} placeholder="Contact person address" /></Field>
               </div>
             </FormSection>
           )}
@@ -242,13 +289,13 @@ export function RegisterPage() {
             <Button variant="outline" onClick={back} disabled={step === 0} className="gap-2">
               <ChevronLeft className="h-4 w-4" /> Back
             </Button>
-            {step < steps.length - 1 ? (
-              <Button onClick={next} className="gap-2">
+            {step < STEPS.length - 1 ? (
+              <Button onClick={next} disabled={step === 0 && (!form.wife_surname || !form.wife_other_names || !form.wife_phone)} className="gap-2">
                 Next <ChevronRight className="h-4 w-4" />
               </Button>
             ) : (
-              <Button onClick={submit} variant="success" className="gap-2">
-                <CheckCircle2 className="h-4 w-4" /> Submit Registration
+              <Button onClick={submit} disabled={submitting} className="gap-2">
+                {submitting ? 'Submitting…' : <><CheckCircle2 className="h-4 w-4" /> Submit Registration</>}
               </Button>
             )}
           </div>
