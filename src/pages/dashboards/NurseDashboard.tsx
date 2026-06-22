@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Activity, Clock, CheckCircle2, Users, Loader2, RefreshCcw, PlayCircle } from 'lucide-react'
+import { Activity, CheckCircle2, Users, Loader2, RefreshCcw, PlayCircle, FlaskConical } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button }       from '@/components/ui/button'
 import { StatCard }     from '@/components/shared/StatCard'
@@ -7,7 +7,8 @@ import { PageHeader }   from '@/components/shared/PageHeader'
 import { SectionCard }  from '@/components/shared/SectionCard'
 import { StatusBadge }  from '@/components/shared/StatusBadge'
 import { EmptyState }   from '@/components/shared/EmptyState'
-import { TriageSheet }  from '@/components/patients/TriageSheet'
+import { TriageSheet }    from '@/components/patients/TriageSheet'
+import { AssignLabSheet } from '@/components/patients/AssignLabSheet'
 import { fetchPatients, updatePatientStatus } from '@/lib/patientQueries'
 import { toast }        from 'sonner'
 import type { Patient } from '@/lib/database.types'
@@ -25,13 +26,14 @@ export function NurseDashboard() {
   const [loading,     setLoading]     = useState(true)
   const [refreshing,  setRefreshing]  = useState(false)
   const [triagingPt,  setTriagingPt]  = useState<Patient | null>(null)
+  const [assigningPt, setAssigningPt] = useState<Patient | null>(null)
   const [starting,    setStarting]    = useState<string | null>(null) // patientId being picked up
 
   const load = useCallback(async (quiet = false) => {
     quiet ? setRefreshing(true) : setLoading(true)
     try {
       const data = await fetchPatients({
-        status: ['registered', 'in_triage', 'ready_for_consultation'],
+        status: ['registered', 'in_triage', 'ready_for_consultation', 'awaiting_lab'],
       })
       setPatients(data)
     } finally {
@@ -42,9 +44,10 @@ export function NurseDashboard() {
 
   useEffect(() => { load() }, [load])
 
-  const waiting  = patients.filter(p => p.status === 'registered')
-  const inTriage = patients.filter(p => p.status === 'in_triage')
-  const ready    = patients.filter(p => p.status === 'ready_for_consultation')
+  const waiting     = patients.filter(p => p.status === 'registered')
+  const inTriage    = patients.filter(p => p.status === 'in_triage')
+  const ready       = patients.filter(p => p.status === 'ready_for_consultation')
+  const awaitingLab = patients.filter(p => p.status === 'awaiting_lab')
 
   async function startTriage(patient: Patient) {
     setStarting(patient.id)
@@ -85,10 +88,10 @@ export function NurseDashboard() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard icon={Users}        label="Awaiting Triage"  value={loading ? '—' : waiting.length}  color="amber" />
-        <StatCard icon={Activity}     label="In Triage"        value={loading ? '—' : inTriage.length} color="blue"  />
-        <StatCard icon={CheckCircle2} label="Ready"            value={loading ? '—' : ready.length}    color="teal"  />
-        <StatCard icon={Clock}        label="Total Active"     value={loading ? '—' : patients.length} color="green" />
+        <StatCard icon={Users}        label="Awaiting Triage"  value={loading ? '—' : waiting.length}     color="amber"  />
+        <StatCard icon={Activity}     label="In Triage"        value={loading ? '—' : inTriage.length}    color="blue"   />
+        <StatCard icon={CheckCircle2} label="Ready"            value={loading ? '—' : ready.length}       color="teal"   />
+        <StatCard icon={FlaskConical} label="Awaiting Lab"     value={loading ? '—' : awaitingLab.length} color="purple" />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -201,11 +204,52 @@ export function NurseDashboard() {
         </div>
       </div>
 
+      {/* Awaiting Lab */}
+      {(awaitingLab.length > 0 || loading) && (
+        <SectionCard
+          title={`Awaiting Lab${awaitingLab.length > 0 ? ` (${awaitingLab.length})` : ''}`}
+          description="Assign a lab technician to process the ordered tests"
+        >
+          {loading ? (
+            <div className="flex items-center justify-center py-6 text-slate-400">
+              <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading…
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {awaitingLab.map(p => (
+                <div key={p.id} className="flex items-center justify-between py-3 gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-900 truncate">{patientName(p)}</p>
+                    <p className="text-xs font-mono text-[#2563EB]">{p.patient_code}</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setAssigningPt(p)}
+                    className="gap-1.5 shrink-0 border-blue-200 text-blue-700 hover:bg-blue-50"
+                  >
+                    <FlaskConical className="h-3.5 w-3.5" />
+                    Assign Lab Tech
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+      )}
+
       <TriageSheet
         patient={triagingPt}
         open={triagingPt !== null}
         onClose={() => setTriagingPt(null)}
         onComplete={handleTriageComplete}
+      />
+
+      <AssignLabSheet
+        patient={assigningPt}
+        open={assigningPt !== null}
+        onClose={() => setAssigningPt(null)}
+        onComplete={() => { load(true); setAssigningPt(null) }}
       />
     </div>
   )

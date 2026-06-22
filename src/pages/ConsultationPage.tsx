@@ -269,11 +269,16 @@ export function ConsultationPage() {
     )
   }
 
-  const patientName = `${patient.wife_surname ?? ''} ${patient.wife_other_names ?? ''}`.trim() || '—'
-  const pendingOrders = labOrders.filter(o => o.status !== 'completed')
-  const canSendToLab  = pendingOrders.length > 0 && !['awaiting_lab', 'lab_in_progress', 'completed'].includes(patient.status)
-  const canFinalize   = !['awaiting_lab', 'lab_in_progress', 'completed'].includes(patient.status)
-  const isReadOnly    = ['awaiting_lab', 'lab_in_progress', 'completed'].includes(patient.status)
+  const patientName    = `${patient.wife_surname ?? ''} ${patient.wife_other_names ?? ''}`.trim() || '—'
+  const pendingOrders  = labOrders.filter(o => o.status !== 'completed')
+  const isResultsReady = patient.status === 'results_ready'
+  const isCompleted    = patient.status === 'completed'
+  const isInLab        = ['awaiting_lab', 'lab_in_progress'].includes(patient.status)
+  const isReadOnly     = isInLab || isCompleted
+
+  const canSendToLab = patient.status === 'in_consultation' && pendingOrders.length > 0
+  const canFinalize  = patient.status === 'in_consultation' || isResultsReady
+  const showAddForms = patient.status === 'in_consultation'
 
   return (
     <div className="flex flex-col gap-4 max-w-4xl mx-auto">
@@ -295,6 +300,26 @@ export function ConsultationPage() {
           <span className="text-xs bg-amber-100 text-amber-700 rounded-full px-3 py-1 font-medium">Read-only</span>
         )}
       </div>
+
+      {/* Results-ready banner */}
+      {isResultsReady && (
+        <div className="flex items-center gap-3 rounded-xl bg-green-50 border border-green-100 p-4">
+          <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-green-800">Lab results are ready</p>
+            <p className="text-xs text-green-600">Review the results in the Lab Orders tab, then finalize.</p>
+          </div>
+          <Button
+            size="sm"
+            onClick={finalizeConsultation}
+            disabled={finalizing}
+            className="gap-2 bg-green-600 hover:bg-green-700 shrink-0"
+          >
+            {finalizing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+            Finalize
+          </Button>
+        </div>
+      )}
 
       {/* Vitals summary */}
       {vitals && (
@@ -351,7 +376,7 @@ export function ConsultationPage() {
                 onChange={v => setSoap(prev => ({ ...prev, plan: v }))}
                 placeholder="Treatment plan, follow-up instructions, referrals…"
               />
-              {!isReadOnly && (
+              {(!isReadOnly || isResultsReady) && (
                 <Button onClick={saveSOAP} disabled={savingSOAP} variant="outline" className="gap-2">
                   {savingSOAP ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   Save SOAP
@@ -380,7 +405,7 @@ export function ConsultationPage() {
                             Qty: {rx.quantity} · ₦{rx.unit_price_at_time.toLocaleString()} each
                           </p>
                         </div>
-                        {!isReadOnly && (
+                        {showAddForms && (
                           <Button
                             variant="ghost" size="icon"
                             className="text-red-500 hover:text-red-700 hover:bg-red-50"
@@ -396,7 +421,7 @@ export function ConsultationPage() {
               )}
 
               {/* Add form */}
-              {!isReadOnly && (
+              {showAddForms && (
                 <>
                   <Separator />
                   <div className="flex flex-col gap-3">
@@ -467,7 +492,7 @@ export function ConsultationPage() {
                             </p>
                           )}
                         </div>
-                        {!isReadOnly && order.status === 'ordered' && (
+                        {showAddForms && order.status === 'ordered' && (
                           <Button
                             variant="ghost" size="icon"
                             className="text-red-500 hover:text-red-700 hover:bg-red-50"
@@ -483,7 +508,7 @@ export function ConsultationPage() {
               )}
 
               {/* Add form */}
-              {!isReadOnly && (
+              {showAddForms && (
                 <>
                   <Separator />
                   <div className="flex flex-col gap-3">
@@ -518,8 +543,8 @@ export function ConsultationPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Action bar */}
-      {!isReadOnly && (
+      {/* Action bar — shown when in_consultation (isReadOnly excludes results_ready now) */}
+      {!isReadOnly && !isResultsReady && (
         <div className="flex items-center justify-between gap-3 pb-6 pt-2 border-t border-slate-100">
           <p className="text-xs text-slate-400">
             {prescriptions.length} drug{prescriptions.length !== 1 ? 's' : ''} · {labOrders.length} test{labOrders.length !== 1 ? 's' : ''} ordered

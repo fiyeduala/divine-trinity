@@ -11,6 +11,7 @@ import { QueuePage }         from './pages/QueuePage'
 import { ConsultationPage }  from './pages/ConsultationPage'
 import { PatientFolderPage } from './pages/PatientFolderPage'
 import { NewPatientPage }    from './pages/receptionist/NewPatientPage'
+import { LabTechDashboard }  from './pages/dashboards/LabTechDashboard'
 
 export default function App() {
   return (
@@ -34,8 +35,8 @@ export default function App() {
                 <Route path="/triage"             element={<QueuePage />} />
                 <Route path="/consultations"      element={<ConsultationPage />} />
                 <Route path="/consultations/:id"  element={<ConsultationPage />} />
-                <Route path="/lab"                element={<PatientsPage />} />
-                <Route path="/results"            element={<PatientsPage />} />
+                <Route path="/lab"                element={<LabTechDashboard />} />
+                <Route path="/results"            element={<LabTechDashboard />} />
                 <Route path="/finance"            element={<PatientFolderPage />} />
                 <Route path="/reports"            element={<DashboardRouter />} />
                 <Route path="/settings"           element={<DashboardRouter />} />
